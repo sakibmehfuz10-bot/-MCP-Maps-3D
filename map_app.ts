@@ -50,7 +50,7 @@ enum ChatTab {
 }
 
 const USER_PROVIDED_GOOGLE_MAPS_API_KEY: string =
-  'AIzaSyAJPTwj4S8isr4b-3NtqVSxk450IAS1lOQ';
+  process.env.GOOGLE_MAPS_API_KEY || '';
 
 const EXAMPLE_PROMPTS = [
   "Show me directions from Tokyo Tower to Shibuya Crossing.",
@@ -74,6 +74,7 @@ export class MapApp extends LitElement {
   @state() messages: HTMLElement[] = [];
   @state() mapInitialized = false;
   @state() mapError = '';
+  @state() performanceMode = false;
 
   private map?: any;
   private geocoder?: any;
@@ -139,7 +140,7 @@ export class MapApp extends LitElement {
       this.mapInitialized = true;
     } catch (error) {
       console.error('Map Load Error:', error);
-      this.mapError = 'Could not load Google Maps.';
+      this.mapError = 'Could not load Maps.';
     }
     // Fix: Cast to any to access requestUpdate when compiler cannot resolve inherited method
     (this as any).requestUpdate();
@@ -160,16 +161,46 @@ export class MapApp extends LitElement {
     this.marker = this.routePolyline = this.originMarker = this.destinationMarker = undefined;
   }
 
+  /**
+   * Simplifies a path using a basic radial distance algorithm to reduce the number of points.
+   * This improves rendering performance for long polylines.
+   */
+  private _simplifyPath(path: {lat: number, lng: number, altitude: number}[], tolerance: number = 0.0001) {
+    if (path.length <= 2 || this.performanceMode === false) return path;
+    
+    const simplified = [path[0]];
+    let prevPoint = path[0];
+
+    for (let i = 1; i < path.length - 1; i++) {
+      const point = path[i];
+      const distance = Math.sqrt(
+        Math.pow(point.lat - prevPoint.lat, 2) + 
+        Math.pow(point.lng - prevPoint.lng, 2)
+      );
+      
+      if (distance > tolerance) {
+        simplified.push(point);
+        prevPoint = point;
+      }
+    }
+    
+    simplified.push(path[path.length - 1]);
+    return simplified;
+  }
+
   private async _handleViewLocation(locationQuery: string) {
     if (!this.mapInitialized || !this.geocoder) return;
     this._clearMapElements();
     this.geocoder.geocode({address: locationQuery}, (results: any, status: string) => {
       if (status === 'OK' && results?.[0] && this.map) {
         const location = results[0].geometry.location;
+        const tilt = this.performanceMode ? 0 : 67.5;
+        const range = this.performanceMode ? 3000 : 2000;
+
         this.map.flyCameraTo({
           endCamera: {
             center: {lat: location.lat(), lng: location.lng(), altitude: 0},
-            heading: 0, tilt: 67.5, range: 2000,
+            heading: 0, tilt, range,
           },
           durationMillis: 1500,
         });
@@ -189,7 +220,11 @@ export class MapApp extends LitElement {
       (response: any, status: string) => {
         if (status === 'OK' && response.routes?.[0]) {
           const route = response.routes[0];
-          const path = route.overview_path.map((p: any) => ({lat: p.lat(), lng: p.lng(), altitude: 5}));
+          let path = route.overview_path.map((p: any) => ({lat: p.lat(), lng: p.lng(), altitude: 5}));
+          
+          // Apply level-of-detail adjustment via path simplification
+          path = this._simplifyPath(path);
+
           this.routePolyline = new this.Polyline3DElement();
           this.routePolyline.coordinates = path;
           this.routePolyline.strokeColor = '#4285F4';
@@ -209,8 +244,10 @@ export class MapApp extends LitElement {
           this.map.appendChild(this.destinationMarker);
 
           const center = route.bounds.getCenter();
+          const tilt = this.performanceMode ? 0 : 45;
+
           this.map.flyCameraTo({
-            endCamera: {center: {lat: center.lat(), lng: center.lng(), altitude: 0}, heading: 0, tilt: 45, range: 10000},
+            endCamera: {center: {lat: center.lat(), lng: center.lng(), altitude: 0}, heading: 0, tilt, range: 10000},
             durationMillis: 2000,
           });
         }
@@ -268,7 +305,12 @@ export class MapApp extends LitElement {
         </div>
         <div class="sidebar">
           <div class="selector" role="tablist">
-            <button class="selected-tab">Gemini</button>
+            <button class="selected-tab">Chat</button>
+            <div style="flex: 1"></div>
+            <button @click=${() => this.performanceMode = !this.performanceMode} 
+              style="font-size: 0.7rem; border: none; opacity: 0.6; padding: 0 1rem; color: var(--color-text3)">
+              ${this.performanceMode ? 'High Perf' : 'High Detail'}
+            </button>
           </div>
           <div class="showtab">
             <div class="chat-messages">

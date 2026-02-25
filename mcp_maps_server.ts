@@ -39,7 +39,7 @@ export async function startMcpGoogleMapServer(
 ) {
   // Create an MCP server
   const server = new McpServer({
-    name: 'AI Studio Google Map',
+    name: 'AI Studio Map',
     version: '1.0.0',
   });
 

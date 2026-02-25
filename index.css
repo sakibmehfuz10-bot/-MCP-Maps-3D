@@ -65,6 +65,13 @@ body {
   --color-error-text: #fff;
 }
 
+/* Hide Google Maps logo and attribution */
+.gm-style img[src*="maps_logo"], 
+.gm-style-cc,
+gmp-map-3d::part(google-logo) {
+  display: none !important;
+}
+
 .gdm-map-app {
   display: flex;
   flex-direction: row-reverse;

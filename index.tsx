@@ -52,9 +52,9 @@ const ai = new GoogleGenAI({
 });
 
 function createAiChat(mcpClient: Client) {
-  // Use gemini-3-pro-preview for complex reasoning and tool usage tasks
+  // Use gemini-3-flash-preview for higher rate limits and faster responses
   return ai.chats.create({
-    model: 'gemini-3-pro-preview',
+    model: 'gemini-3-flash-preview',
     config: {
       systemInstruction: SYSTEM_INSTRUCTIONS,
       tools: [mcpToTool(mcpClient)],
@@ -104,7 +104,28 @@ document.addEventListener('DOMContentLoaded', async (event) => {
 
     try {
       try {
-        const stream = await aiChat.sendMessageStream({message: input});
+        let stream;
+        let retryCount = 0;
+        const maxRetries = 3;
+        
+        while (retryCount <= maxRetries) {
+          try {
+            stream = await aiChat.sendMessageStream({message: input});
+            break; // Success, exit loop
+          } catch (e: any) {
+            if (e.message?.includes('429') || e.status === 429 || (typeof e === 'string' && e.includes('429'))) {
+              if (retryCount === maxRetries) throw e;
+              retryCount++;
+              const delay = Math.pow(2, retryCount) * 1000;
+              console.warn(`Rate limit hit. Retrying in ${delay}ms... (Attempt ${retryCount}/${maxRetries})`);
+              await new Promise(resolve => setTimeout(resolve, delay));
+              continue;
+            }
+            throw e; // Not a rate limit error, rethrow
+          }
+        }
+
+        if (!stream) throw new Error("Failed to initialize stream after retries");
 
         for await (const chunk of stream) {
           for (const candidate of chunk.candidates ?? []) {
