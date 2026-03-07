@@ -117,7 +117,7 @@ export class MapApp extends LitElement {
       USER_PROVIDED_GOOGLE_MAPS_API_KEY.includes('REPLACE');
 
     if (isApiKeyPlaceholder) {
-      this.mapError = `API Key missing. Please set USER_PROVIDED_GOOGLE_MAPS_API_KEY in map_app.ts.`;
+      this.mapError = `Google Maps API Key missing. Please set the GOOGLE_MAPS_API_KEY environment variable.`;
       // Fix: Cast to any to access requestUpdate when compiler cannot resolve inherited method
       (this as any).requestUpdate();
       return;

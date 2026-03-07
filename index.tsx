@@ -56,9 +56,9 @@ const ai = new GoogleGenAI({
 });
 
 function createAiChat(mcpClient: Client) {
-  // Use gemini-3-flash-preview for higher rate limits and faster responses
+  // Use gemini-2.0-flash for reliable performance and speed
   return ai.chats.create({
-    model: 'gemini-3-flash-preview',
+    model: 'gemini-2.0-flash',
     config: {
       systemInstruction: SYSTEM_INSTRUCTIONS,
       tools: [mcpToTool(mcpClient)],

@@ -1,11 +1,17 @@
 import { defineConfig } from 'vite';
 
 export default defineConfig({
-  root: './', // Specify the project root
+  root: './',
+  define: {
+    'process.env': {
+      API_KEY: JSON.stringify(process.env.GEMINI_API_KEY || process.env.API_KEY),
+      GOOGLE_MAPS_API_KEY: JSON.stringify(process.env.GOOGLE_MAPS_API_KEY),
+    }
+  },
   build: {
-    outDir: 'dist',// Output directory
+    outDir: 'dist',
     rollupOptions: {
-      input: './index.html', // Ensure index.html is found correctly
+      input: './index.html',
     },
   },
 });
