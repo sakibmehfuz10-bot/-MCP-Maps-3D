@@ -1,18 +1,15 @@
-
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import {Loader} from '@googlemaps/js-api-loader';
+import { Loader } from '@googlemaps/js-api-loader';
 import hljs from 'highlight.js';
-import {html, LitElement, PropertyValueMap} from 'lit';
-import {customElement, query, state} from 'lit/decorators.js';
-import {classMap} from 'lit/directives/class-map.js';
-import {Marked} from 'marked';
-import {markedHighlight} from 'marked-highlight';
-
-import {MapParams} from './mcp_maps_server';
+import { html, LitElement, PropertyValueMap } from 'lit';
+import { customElement, query, state } from 'lit/decorators.js';
+import { classMap } from 'lit/directives/class-map.js';
+import { Marked } from 'marked';
+import { markedHighlight } from 'marked-highlight';
 
 /** Markdown formatting function with syntax highlighting */
 export const marked = new Marked(
@@ -22,7 +19,7 @@ export const marked = new Marked(
     langPrefix: 'hljs language-',
     highlight(code, lang, info) {
       const language = hljs.getLanguage(lang) ? lang : 'plaintext';
-      return hljs.highlight(code, {language}).value;
+      return hljs.highlight(code, { language }).value;
     },
   }),
 );
@@ -45,12 +42,8 @@ export enum ChatState {
   EXECUTING,
 }
 
-enum ChatTab {
-  GEMINI,
-}
-
-const USER_PROVIDED_GOOGLE_MAPS_API_KEY: string =
-  process.env.GOOGLE_MAPS_API_KEY || '';
+const GOOGLE_MAPS_API_KEY = process.env.GOOGLE_MAPS_API_KEY || '';
+const GEMINI_API_KEY = process.env.API_KEY || process.env.GEMINI_API_KEY || '';
 
 const EXAMPLE_PROMPTS = [
   "Show me directions from Tokyo Tower to Shibuya Crossing.",
@@ -69,7 +62,6 @@ export class MapApp extends LitElement {
   @query('#messageInput') messageInputElement?: HTMLInputElement;
 
   @state() chatState = ChatState.IDLE;
-  @state() selectedChatTab = ChatTab.GEMINI;
   @state() inputMessage = '';
   @state() messages: HTMLElement[] = [];
   @state() mapInitialized = false;
@@ -86,8 +78,6 @@ export class MapApp extends LitElement {
   private routePolyline?: any;
   private originMarker?: any;
   private destinationMarker?: any;
-
-  sendMessageHandler?: CallableFunction;
 
   constructor() {
     super();
@@ -112,44 +102,40 @@ export class MapApp extends LitElement {
   }
 
   async loadMap() {
-    const isApiKeyPlaceholder =
-      USER_PROVIDED_GOOGLE_MAPS_API_KEY === '' ||
-      USER_PROVIDED_GOOGLE_MAPS_API_KEY.includes('REPLACE');
+    const isApiKeyMissing = !GOOGLE_MAPS_API_KEY || GOOGLE_MAPS_API_KEY.includes('REPLACE');
 
-    if (isApiKeyPlaceholder) {
-      this.mapError = `Google Maps API Key is missing or invalid. Please set the GOOGLE_MAPS_API_KEY environment variable with a valid API key from https://console.cloud.google.com/`;
-      // Fix: Cast to any to access requestUpdate when compiler cannot resolve inherited method
+    if (isApiKeyMissing) {
+      this.mapError = `⚠️ Google Maps API Key is missing. Please set GOOGLE_MAPS_API_KEY environment variable in Vercel project settings.`;
       (this as any).requestUpdate();
       return;
     }
 
     const loader = new Loader({
-      apiKey: USER_PROVIDED_GOOGLE_MAPS_API_KEY,
+      apiKey: GOOGLE_MAPS_API_KEY,
       version: 'beta',
       libraries: ['geocoding', 'routes', 'geometry'],
     });
 
     try {
-      console.log('Loading Google Maps API...');
+      console.log('📡 Loading Google Maps API...');
       await loader.load();
       
-      console.log('Importing Maps 3D library...');
+      console.log('🗺️ Importing Maps 3D library...');
       const maps3dLibrary = await (window as any).google.maps.importLibrary('maps3d');
       this.Map3DElement = maps3dLibrary.Map3DElement;
       this.Marker3DElement = maps3dLibrary.Marker3DElement;
       this.Polyline3DElement = maps3dLibrary.Polyline3DElement;
       this.directionsService = new (window as any).google.maps.DirectionsService();
       
-      console.log('Initializing map...');
+      console.log('🎯 Initializing map...');
       this.initializeMap();
       this.mapInitialized = true;
-      console.log('Map initialized successfully');
+      console.log('✅ Map initialized successfully');
     } catch (error) {
-      console.error('Map Load Error:', error);
+      console.error('❌ Map Load Error:', error);
       const errorMessage = error instanceof Error ? error.message : String(error);
-      this.mapError = `Failed to load Google Maps: ${errorMessage}. Please ensure your API key is valid and has the required libraries enabled (Maps, Geocoding, Routes, Maps 3D).`;
+      this.mapError = `Failed to load Google Maps: ${errorMessage}. Please ensure your API key is valid and has Maps 3D API enabled.`;
     }
-    // Fix: Cast to any to access requestUpdate when compiler cannot resolve inherited method
     (this as any).requestUpdate();
   }
 
@@ -168,12 +154,8 @@ export class MapApp extends LitElement {
     this.marker = this.routePolyline = this.originMarker = this.destinationMarker = undefined;
   }
 
-  /**
-   * Simplifies a path using a basic radial distance algorithm to reduce the number of points.
-   * This improves rendering performance for long polylines.
-   */
-  private _simplifyPath(path: {lat: number, lng: number, altitude: number}[], tolerance: number = 0.0001) {
-    if (path.length <= 2 || this.performanceMode === false) return path;
+  private _simplifyPath(path: { lat: number, lng: number, altitude: number }[], tolerance: number = 0.0001) {
+    if (path.length <= 2 || !this.performanceMode) return path;
     
     const simplified = [path[0]];
     let prevPoint = path[0];
@@ -198,7 +180,7 @@ export class MapApp extends LitElement {
   private async _handleViewLocation(locationQuery: string) {
     if (!this.mapInitialized || !this.geocoder) return;
     this._clearMapElements();
-    this.geocoder.geocode({address: locationQuery}, (results: any, status: string) => {
+    this.geocoder.geocode({ address: locationQuery }, (results: any, status: string) => {
       if (status === 'OK' && results?.[0] && this.map) {
         const location = results[0].geometry.location;
         const tilt = this.performanceMode ? 0 : 67.5;
@@ -206,13 +188,13 @@ export class MapApp extends LitElement {
 
         this.map.flyCameraTo({
           endCamera: {
-            center: {lat: location.lat(), lng: location.lng(), altitude: 0},
+            center: { lat: location.lat(), lng: location.lng(), altitude: 0 },
             heading: 0, tilt, range,
           },
           durationMillis: 1500,
         });
         this.marker = new this.Marker3DElement();
-        this.marker.position = {lat: location.lat(), lng: location.lng(), altitude: 0};
+        this.marker.position = { lat: location.lat(), lng: location.lng(), altitude: 0 };
         this.marker.label = locationQuery.slice(0, 30);
         this.map.appendChild(this.marker);
       } else if (status !== 'OK') {
@@ -225,13 +207,12 @@ export class MapApp extends LitElement {
     if (!this.mapInitialized || !this.directionsService) return;
     this._clearMapElements();
     this.directionsService.route(
-      {origin, destination: dest, travelMode: (window as any).google.maps.TravelMode.DRIVING},
+      { origin, destination: dest, travelMode: (window as any).google.maps.TravelMode.DRIVING },
       (response: any, status: string) => {
         if (status === 'OK' && response.routes?.[0]) {
           const route = response.routes[0];
-          let path = route.overview_path.map((p: any) => ({lat: p.lat(), lng: p.lng(), altitude: 5}));
+          let path = route.overview_path.map((p: any) => ({ lat: p.lat(), lng: p.lng(), altitude: 5 }));
           
-          // Apply level-of-detail adjustment via path simplification
           path = this._simplifyPath(path);
 
           this.routePolyline = new this.Polyline3DElement();
@@ -242,13 +223,13 @@ export class MapApp extends LitElement {
 
           const start = route.legs[0].start_location;
           this.originMarker = new this.Marker3DElement();
-          this.originMarker.position = {lat: start.lat(), lng: start.lng(), altitude: 0};
+          this.originMarker.position = { lat: start.lat(), lng: start.lng(), altitude: 0 };
           this.originMarker.label = 'A';
           this.map.appendChild(this.originMarker);
 
           const end = route.legs[0].end_location;
           this.destinationMarker = new this.Marker3DElement();
-          this.destinationMarker.position = {lat: end.lat(), lng: end.lng(), altitude: 0};
+          this.destinationMarker.position = { lat: end.lat(), lng: end.lng(), altitude: 0 };
           this.destinationMarker.label = 'B';
           this.map.appendChild(this.destinationMarker);
 
@@ -256,7 +237,7 @@ export class MapApp extends LitElement {
           const tilt = this.performanceMode ? 0 : 45;
 
           this.map.flyCameraTo({
-            endCamera: {center: {lat: center.lat(), lng: center.lng(), altitude: 0}, heading: 0, tilt, range: 10000},
+            endCamera: { center: { lat: center.lat(), lng: center.lng(), altitude: 0 }, heading: 0, tilt, range: 10000 },
             durationMillis: 2000,
           });
         } else if (status !== 'OK') {
@@ -266,7 +247,7 @@ export class MapApp extends LitElement {
     );
   }
 
-  async handleMapQuery(params: MapParams) {
+  async handleMapQuery(params: { location?: string; origin?: string; destination?: string }) {
     if (params.location) this._handleViewLocation(params.location);
     else if (params.origin && params.destination) this._handleDirections(params.origin, params.destination);
   }
@@ -290,21 +271,26 @@ export class MapApp extends LitElement {
 
     this.messages = [...this.messages, div];
     this.scrollToTheEnd();
-    return {thinkingContainer: thinkingDetails, thinkingElement, textElement};
+    return { thinkingContainer: thinkingDetails, thinkingElement, textElement };
   }
 
   scrollToTheEnd() {
-    setTimeout(() => this.anchor?.scrollIntoView({behavior: 'smooth', block: 'end'}), 50);
+    setTimeout(() => this.anchor?.scrollIntoView({ behavior: 'smooth', block: 'end' }), 50);
   }
 
   async sendMessageAction() {
     if (this.chatState !== ChatState.IDLE || !this.inputMessage.trim()) return;
     const msg = this.inputMessage.trim();
     this.inputMessage = '';
-    const {textElement} = this.addMessage('user', '...');
+    const { textElement } = this.addMessage('user', '...');
     textElement.innerHTML = await marked.parse(msg);
-    if (this.sendMessageHandler) await this.sendMessageHandler(msg, 'user');
     this.setNewRandomPrompt();
+
+    // Show demo message
+    const { textElement: assistantText } = this.addMessage('assistant', '');
+    assistantText.innerHTML = await marked.parse(
+      '**Demo Mode**: This is a simplified version without AI integration. To enable full AI features, set up the Gemini API key in your Vercel environment variables.'
+    );
   }
 
   render() {
@@ -329,7 +315,7 @@ export class MapApp extends LitElement {
               <div id="anchor"></div>
             </div>
             <div class="footer">
-              <div id="chatStatus" class=${classMap({hidden: this.chatState === ChatState.IDLE})}>
+              <div id="chatStatus" class=${classMap({ hidden: this.chatState === ChatState.IDLE })}>
                 ${ICON_BUSY} ${this.chatState === ChatState.THINKING ? 'Thinking' : 'Generating'}...
               </div>
               <div id="inputArea">

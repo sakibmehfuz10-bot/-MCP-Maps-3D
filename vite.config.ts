@@ -9,6 +9,7 @@ export default defineConfig({
     'process.env': {
       API_KEY: JSON.stringify(process.env.GEMINI_API_KEY || process.env.API_KEY || ''),
       GOOGLE_MAPS_API_KEY: JSON.stringify(process.env.GOOGLE_MAPS_API_KEY || ''),
+      GEMINI_API_KEY: JSON.stringify(process.env.GEMINI_API_KEY || ''),
       NODE_ENV: JSON.stringify(process.env.NODE_ENV || 'development'),
     }
   },
@@ -18,12 +19,6 @@ export default defineConfig({
     port: 5173,
     strictPort: false,
     cors: true,
-    middlewareMode: false,
-    hmr: {
-      protocol: 'ws',
-      host: 'localhost',
-      port: 5173,
-    }
   },
 
   preview: {
@@ -36,28 +31,24 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     assetsDir: 'assets',
-    sourcemap: process.env.NODE_ENV === 'development',
+    sourcemap: false,
     minify: 'terser',
     terserOptions: {
       compress: {
-        drop_console: process.env.NODE_ENV === 'production',
+        drop_console: true,
       },
     },
     rollupOptions: {
       input: './index.html',
-      external: [],
       output: {
-        manualChunks: {
-          vendor: ['lit', '@google/genai'],
-        },
         entryFileNames: 'js/[name].[hash].js',
         chunkFileNames: 'js/[name].[hash].js',
         assetFileNames: 'assets/[name].[hash][extname]',
       },
     },
-    chunkSizeWarningLimit: 1000,
+    chunkSizeWarningLimit: 1500,
     cssCodeSplit: true,
-    reportCompressedSize: true,
+    reportCompressedSize: false,
     commonjsOptions: {
       transformMixedEsModules: true,
     },
@@ -66,16 +57,10 @@ export default defineConfig({
   optimizeDeps: {
     include: [
       'lit',
-      '@google/genai',
       '@googlemaps/js-api-loader',
       'marked',
       'highlight.js',
       'zod',
     ],
-    exclude: ['@modelcontextprotocol/sdk'],
-  },
-
-  ssr: {
-    noExternal: ['lit', '@google/genai'],
   },
 });
