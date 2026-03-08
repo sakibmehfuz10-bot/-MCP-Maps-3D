@@ -45,152 +45,186 @@ Tool Usage Guidelines:
 5.  **If unsure, ask for clarification:** If a user's request is too vague to identify a specific place for the map tools, ask for more details instead of making assumptions.
 `;
 
-// Validate API key
-if (!process.env.API_KEY) {
-  throw new Error('API_KEY environment variable is not set');
-}
+/**
+ * Initialize and start the application
+ */
+async function initializeApp() {
+  try {
+    // Validate API key
+    const apiKey = process.env.API_KEY;
+    if (!apiKey) {
+      throw new Error(
+        'API_KEY environment variable is not set. Please set GEMINI_API_KEY or API_KEY in your environment.'
+      );
+    }
 
-// Initialize GoogleGenAI with API key from environment
-const ai = new GoogleGenAI({
-  apiKey: process.env.API_KEY,
-});
+    // Get root element
+    const rootElement = document.querySelector('#root');
+    if (!rootElement) {
+      throw new Error('Root element (#root) not found in the DOM');
+    }
 
-function createAiChat(mcpClient: Client) {
-  // Use gemini-2.0-flash for reliable performance and speed
-  return ai.chats.create({
-    model: 'gemini-2.0-flash',
-    config: {
-      systemInstruction: SYSTEM_INSTRUCTIONS,
-      tools: [mcpToTool(mcpClient)],
-    },
-  });
-}
+    // Initialize GoogleGenAI with API key from environment
+    const ai = new GoogleGenAI({
+      apiKey: apiKey,
+    });
 
-function camelCaseToDash(str: string): string {
-  return str
-    .replace(/([a-z])([A-Z])/g, '$1-$2')
-    .replace(/([A-Z])([A-Z][a-z])/g, '$1-$2')
-    .toLowerCase();
-}
+    // Create MapApp component
+    const mapApp = new MapApp();
+    rootElement.appendChild(mapApp as unknown as Node);
 
-document.addEventListener('DOMContentLoaded', async (event) => {
-  const rootElement = document.querySelector('#root');
-  
-  if (!rootElement) {
-    throw new Error('Root element not found');
-  }
+    // Set up MCP communication
+    const [transportA, transportB] = InMemoryTransport.createLinkedPair();
 
-  const mapApp = new MapApp();
-  rootElement.appendChild(mapApp as unknown as Node);
-
-  const [transportA, transportB] = InMemoryTransport.createLinkedPair();
-
-  void startMcpGoogleMapServer(
-    transportA,
-    (params: {location?: string; origin?: string; destination?: string}) => {
-      mapApp.handleMapQuery(params);
-    },
-  );
-
-  const mcpClient = await startClient(transportB);
-  const aiChat = createAiChat(mcpClient);
-
-  mapApp.sendMessageHandler = async (input: string, role: string) => {
-    console.log('sendMessageHandler', input, role);
-
-    const {thinkingElement, textElement, thinkingContainer} = mapApp.addMessage(
-      'assistant',
-      '',
+    // Start MCP server
+    void startMcpGoogleMapServer(
+      transportA,
+      (params: {location?: string; origin?: string; destination?: string}) => {
+        mapApp.handleMapQuery(params);
+      },
     );
 
-    mapApp.setChatState(ChatState.GENERATING);
-    textElement.innerHTML = '...'; // Initial placeholder
+    // Start MCP client
+    const mcpClient = await startClient(transportB);
 
-    let newCode = '';
-    let thoughtAccumulator = '';
-
-    try {
-      let stream;
-      let retryCount = 0;
-      const maxRetries = 3;
-      
-      while (retryCount <= maxRetries) {
-        try {
-          stream = await aiChat.sendMessageStream({message: input});
-          break; // Success, exit loop
-        } catch (e: any) {
-          const isRateLimit = 
-            e?.message?.includes('429') || 
-            e?.status === 429 || 
-            (typeof e === 'string' && e.includes('429'));
-          
-          if (isRateLimit && retryCount < maxRetries) {
-            retryCount++;
-            const delay = Math.pow(2, retryCount) * 1000;
-            console.warn(`Rate limit hit. Retrying in ${delay}ms... (Attempt ${retryCount}/${maxRetries})`);
-            await new Promise(resolve => setTimeout(resolve, delay));
-            continue;
-          }
-          throw e;
-        }
-      }
-
-      if (!stream) {
-        throw new Error('Failed to initialize stream after retries');
-      }
-
-      for await (const chunk of stream) {
-        for (const candidate of chunk.candidates ?? []) {
-          for (const part of candidate.content?.parts ?? []) {
-            if (part.functionCall) {
-              // Execute the function call via MCP, but don't display the JSON in the chat
-              console.log(
-                'FUNCTION CALL:',
-                part.functionCall.name,
-                part.functionCall.args,
-              );
-            }
-
-            // Handle thinking process if supported by the model (e.g. gemini-3 series)
-            if (part.thought) {
-              mapApp.setChatState(ChatState.THINKING);
-              thoughtAccumulator += ' ' + part.thought;
-              thinkingElement.innerHTML =
-                await marked.parse(thoughtAccumulator);
-              if (thinkingContainer) {
-                thinkingContainer.classList.remove('hidden');
-              }
-            } else if (part.text) {
-              mapApp.setChatState(ChatState.EXECUTING);
-              newCode += part.text;
-              textElement.innerHTML = await marked.parse(newCode);
-            }
-            mapApp.scrollToTheEnd();
-          }
-        }
-      }
-    } catch (e: unknown) {
-      console.error('GenAI SDK Error:', e);
-      let finalErrorMessage = 'An error occurred while processing your request.';
-      if (e instanceof Error) {
-        finalErrorMessage = e.message;
-      }
-      
-      const {textElement: errorTextElement} = mapApp.addMessage('error', '');
-      errorTextElement.innerHTML = await marked.parse(
-        `Error: ${finalErrorMessage}`,
-      );
-    } finally {
-      if (thinkingContainer && !thoughtAccumulator) {
-        thinkingContainer.classList.add('hidden');
-      }
-
-      const content = textElement.innerHTML.trim();
-      if (content === '...' || content.length === 0) {
-        textElement.innerHTML = '';
-      }
-
-      mapApp.setChatState(ChatState.IDLE);
+    // Create AI chat instance
+    function createAiChat(mcpClient: Client) {
+      // Use gemini-2.0-flash for reliable performance and speed
+      return ai.chats.create({
+        model: 'gemini-2.0-flash',
+        config: {
+          systemInstruction: SYSTEM_INSTRUCTIONS,
+          tools: [mcpToTool(mcpClient)],
+        },
+      });
     }
-  };
-});
+
+    const aiChat = createAiChat(mcpClient);
+
+    // Set up message handler
+    mapApp.sendMessageHandler = async (input: string, role: string) => {
+      console.log('sendMessageHandler', input, role);
+
+      const {thinkingElement, textElement, thinkingContainer} = mapApp.addMessage(
+        'assistant',
+        '',
+      );
+
+      mapApp.setChatState(ChatState.GENERATING);
+      textElement.innerHTML = '...'; // Initial placeholder
+
+      let newCode = '';
+      let thoughtAccumulator = '';
+
+      try {
+        let stream;
+        let retryCount = 0;
+        const maxRetries = 3;
+        
+        while (retryCount <= maxRetries) {
+          try {
+            stream = await aiChat.sendMessageStream({message: input});
+            break; // Success, exit loop
+          } catch (e: any) {
+            const isRateLimit = 
+              e?.message?.includes('429') || 
+              e?.status === 429 || 
+              (typeof e === 'string' && e.includes('429'));
+            
+            if (isRateLimit && retryCount < maxRetries) {
+              retryCount++;
+              const delay = Math.pow(2, retryCount) * 1000;
+              console.warn(`Rate limit hit. Retrying in ${delay}ms... (Attempt ${retryCount}/${maxRetries})`);
+              await new Promise(resolve => setTimeout(resolve, delay));
+              continue;
+            }
+            throw e;
+          }
+        }
+
+        if (!stream) {
+          throw new Error('Failed to initialize stream after retries');
+        }
+
+        for await (const chunk of stream) {
+          for (const candidate of chunk.candidates ?? []) {
+            for (const part of candidate.content?.parts ?? []) {
+              if (part.functionCall) {
+                // Execute the function call via MCP, but don't display the JSON in the chat
+                console.log(
+                  'FUNCTION CALL:',
+                  part.functionCall.name,
+                  part.functionCall.args,
+                );
+              }
+
+              // Handle thinking process if supported by the model (e.g. gemini-3 series)
+              if (part.thought) {
+                mapApp.setChatState(ChatState.THINKING);
+                thoughtAccumulator += ' ' + part.thought;
+                thinkingElement.innerHTML =
+                  await marked.parse(thoughtAccumulator);
+                if (thinkingContainer) {
+                  thinkingContainer.classList.remove('hidden');
+                }
+              } else if (part.text) {
+                mapApp.setChatState(ChatState.EXECUTING);
+                newCode += part.text;
+                textElement.innerHTML = await marked.parse(newCode);
+              }
+              mapApp.scrollToTheEnd();
+            }
+          }
+        }
+      } catch (e: unknown) {
+        console.error('GenAI SDK Error:', e);
+        let finalErrorMessage = 'An error occurred while processing your request.';
+        if (e instanceof Error) {
+          finalErrorMessage = e.message;
+        }
+        
+        const {textElement: errorTextElement} = mapApp.addMessage('error', '');
+        errorTextElement.innerHTML = await marked.parse(
+          `Error: ${finalErrorMessage}`,
+        );
+      } finally {
+        if (thinkingContainer && !thoughtAccumulator) {
+          thinkingContainer.classList.add('hidden');
+        }
+
+        const content = textElement.innerHTML.trim();
+        if (content === '...' || content.length === 0) {
+          textElement.innerHTML = '';
+        }
+
+        mapApp.setChatState(ChatState.IDLE);
+      }
+    };
+
+    console.log('Application initialized successfully');
+  } catch (error) {
+    console.error('Failed to initialize application:', error);
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    
+    // Show error in the error screen
+    const errorDetailsElement = document.getElementById('error-details');
+    if (errorDetailsElement) {
+      errorDetailsElement.textContent = errorMessage;
+    }
+    
+    const loadingScreen = document.getElementById('loading-screen');
+    const errorScreen = document.getElementById('error-screen');
+    
+    if (loadingScreen) loadingScreen.style.display = 'none';
+    if (errorScreen) errorScreen.style.display = 'flex';
+    
+    throw error;
+  }
+}
+
+// Start the application when DOM is ready
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initializeApp);
+} else {
+  initializeApp().catch(console.error);
+}

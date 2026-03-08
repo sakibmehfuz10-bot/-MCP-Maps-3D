@@ -117,7 +117,7 @@ export class MapApp extends LitElement {
       USER_PROVIDED_GOOGLE_MAPS_API_KEY.includes('REPLACE');
 
     if (isApiKeyPlaceholder) {
-      this.mapError = `Google Maps API Key missing. Please set the GOOGLE_MAPS_API_KEY environment variable.`;
+      this.mapError = `Google Maps API Key is missing or invalid. Please set the GOOGLE_MAPS_API_KEY environment variable with a valid API key from https://console.cloud.google.com/`;
       // Fix: Cast to any to access requestUpdate when compiler cannot resolve inherited method
       (this as any).requestUpdate();
       return;
@@ -130,17 +130,24 @@ export class MapApp extends LitElement {
     });
 
     try {
+      console.log('Loading Google Maps API...');
       await loader.load();
+      
+      console.log('Importing Maps 3D library...');
       const maps3dLibrary = await (window as any).google.maps.importLibrary('maps3d');
       this.Map3DElement = maps3dLibrary.Map3DElement;
       this.Marker3DElement = maps3dLibrary.Marker3DElement;
       this.Polyline3DElement = maps3dLibrary.Polyline3DElement;
       this.directionsService = new (window as any).google.maps.DirectionsService();
+      
+      console.log('Initializing map...');
       this.initializeMap();
       this.mapInitialized = true;
+      console.log('Map initialized successfully');
     } catch (error) {
       console.error('Map Load Error:', error);
-      this.mapError = 'Could not load Maps.';
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      this.mapError = `Failed to load Google Maps: ${errorMessage}. Please ensure your API key is valid and has the required libraries enabled (Maps, Geocoding, Routes, Maps 3D).`;
     }
     // Fix: Cast to any to access requestUpdate when compiler cannot resolve inherited method
     (this as any).requestUpdate();
@@ -208,6 +215,8 @@ export class MapApp extends LitElement {
         this.marker.position = {lat: location.lat(), lng: location.lng(), altitude: 0};
         this.marker.label = locationQuery.slice(0, 30);
         this.map.appendChild(this.marker);
+      } else if (status !== 'OK') {
+        console.warn(`Geocoding failed for "${locationQuery}": ${status}`);
       }
     });
   }
@@ -250,6 +259,8 @@ export class MapApp extends LitElement {
             endCamera: {center: {lat: center.lat(), lng: center.lng(), altitude: 0}, heading: 0, tilt, range: 10000},
             durationMillis: 2000,
           });
+        } else if (status !== 'OK') {
+          console.warn(`Directions request failed: ${status}`);
         }
       }
     );

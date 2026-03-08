@@ -1,1 +1,37 @@
-{"name": "mcp-maps-3d","private": true,"version": "0.0.0","type": "module","scripts": {"dev": "vite","build": "vite build","preview": "vite preview","lint": "tsc --noEmit"},"dependencies": {"@google/genai": "1.30.0","@modelcontextprotocol/sdk": "1.22.0","zod": "3.25.76","highlight.js": "11.11.1","lit": "3.3.2","marked": "15.0.12","marked-highlight": "2.2.3","@googlemaps/js-api-loader": "1.16.10"},"devDependencies": {"@types/node": "^22.14.0","typescript": "~5.8.2","vite": "^6.2.0"}}
+{
+  "name": "mcp-maps-3d",
+  "version": "1.0.0",
+  "description": "Interactive 3D mapping application powered by Google Maps and Gemini AI with Model Context Protocol",
+  "type": "module",
+  "private": true,
+  "author": "MCP Maps 3D Team",
+  "license": "Apache-2.0",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "lint": "tsc --noEmit",
+    "type-check": "tsc --noEmit",
+    "clean": "rm -rf dist node_modules pnpm-lock.yaml"
+  },
+  "dependencies": {
+    "@google/genai": "1.30.0",
+    "@googlemaps/js-api-loader": "1.16.10",
+    "@modelcontextprotocol/sdk": "1.22.0",
+    "highlight.js": "11.11.1",
+    "lit": "3.3.2",
+    "marked": "15.0.12",
+    "marked-highlight": "2.2.3",
+    "zod": "3.25.76"
+  },
+  "devDependencies": {
+    "@types/node": "^22.14.0",
+    "terser": "^5.46.0",
+    "typescript": "~5.8.2",
+    "vite": "^6.2.0"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "pnpm": ">=10.0.0"
+  }
+}

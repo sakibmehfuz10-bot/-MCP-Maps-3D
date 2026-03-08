@@ -1,0 +1,26 @@
+version: '3.8'
+
+services:
+  mcp-maps-3d:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "4173:4173"
+    environment:
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GOOGLE_MAPS_API_KEY: ${GOOGLE_MAPS_API_KEY:-}
+      NODE_ENV: ${NODE_ENV:-production}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:4173/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
+    networks:
+      - mcp-network
+
+networks:
+  mcp-network:
+    driver: bridge
